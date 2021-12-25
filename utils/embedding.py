@@ -78,21 +78,22 @@ def load_pre_trained(load_filename, vocabulary=None):
         print('Logging Info - Loading {} Embedding : {}'.format(load_filename, (len(word_vectors), embedding_dim)))
         return word_vectors
 
-
+# 训练Word2Vec字向量/词向量，corpus组成为List<List<char>>；vocabulary形式为（我：2）的词典，index从2开始
+# 返回词向量shape=(len(vocabulary) + 2, embedding_dim),前2行分别表示mask和unk，后面行索引与传入vocabulary的index一致
 def train_w2v(corpus, vocabulary, embedding_dim=300):
     model = Word2Vec(corpus, size=embedding_dim, min_count=1, window=5, sg=1, iter=10)
     weights = model.wv.syn0
-    d = dict([(k, v.index) for k, v in model.wv.vocab.items()])
+    d = dict([(k, v.index) for k, v in model.wv.vocab.items()]) # word2vec训练出来得到的词典
     emb = np.zeros(shape=(len(vocabulary) + 2, embedding_dim), dtype='float32')     # 0 for mask, 1 for unknown token
-    emb[1] = np.random.normal(0, 0.05, embedding_dim)
+    emb[1] = np.random.normal(0, 0.05, embedding_dim) #第一行(for unknown token)emb初始化为正态分布
 
     nb_unk = 0
     for w, i in vocabulary.items():
         if w not in d:
-            nb_unk += 1
+            nb_unk += 1 # 有的字在word2vec训练过程中没有识别出来，判定为unknown token，同样初始化为正态分布
             emb[i, :] = np.random.normal(0, 0.05, embedding_dim)
         else:
-            emb[i, :] = weights[d[w], :]
+            emb[i, :] = weights[d[w], :] #赋值为word2vec词向量
     print('Logging Info - Word2Vec Embedding matrix created: {}, unknown tokens: {}'.format(emb.shape, nb_unk))
     return emb
 
@@ -119,12 +120,12 @@ def train_glove(corpus, vocabulary, embedding_dim=300):
     print('Logging Info - Glove Embedding matrix created: {}, unknown tokens: {}'.format(emb.shape, nb_unk))
     return emb
 
-
+# 利用skipgram模式训练fasttext字向量/词向量，加入n-gram=3
 def train_fasttext(corpus, vocabulary, embedding_dim=300):
     corpus_file_path = 'fasttext_tmp_corpus.txt'
     with open(corpus_file_path, 'w', encoding='utf8')as writer:
         for sentence in corpus:
-            writer.write(' '.join(sentence) + '\n')
+            writer.write(' '.join(sentence) + '\n')# fasttext语料输入，每行一句话，每个字之间空格隔开
 
     model = train_unsupervised(input=corpus_file_path, model='skipgram', epoch=10, minCount=1, wordNgrams=3,
                                dim=embedding_dim)

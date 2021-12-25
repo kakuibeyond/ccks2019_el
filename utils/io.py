@@ -45,7 +45,7 @@ def write_log(filename, log, mode='w'):
         writer.write('\n')
         json.dump(log, writer, indent=4, ensure_ascii=False)
 
-
+# 根据特定规则自动生成保存的文件名
 def format_filename(_dir, filename_template, **kwargs):
     """Obtain the filename of data base on the provided template and parameters"""
     filename = os.path.join(_dir, filename_template.format(**kwargs))

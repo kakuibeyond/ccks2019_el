@@ -27,7 +27,7 @@ IMG_DIR = './img'
 CCKS_DIR = path.join(RAW_DATA_DIR, 'ccks2019_el')
 CCKS_TRAIN_FILENAME = path.join(CCKS_DIR, 'train.json')
 CCKS_TEST_FILENAME = path.join(CCKS_DIR, 'develop.json')
-CCKS_TEST_FINAL_FILENAME = path.join(CCKS_DIR, 'eval722.json')
+CCKS_TEST_FINAL_FILENAME = path.join(CCKS_DIR, 'eval.json')
 KB_FILENAME = path.join(CCKS_DIR, 'kb_data')
 
 TRAIN_DATA_FILENAME = 'erl_train.pkl'

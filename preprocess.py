@@ -40,25 +40,26 @@ def load_kb_data(kb_file):
             entity_id = kb_data['subject_id']
 
             desc = '\n'.join('%s：%s' % (data['predicate'], data['object']) for data in kb_data['data'])
-            desc.lower()
+            desc.lower() # 实体描述信息，每行一个data里面的【属性 属性值】，换行符分隔
             if not desc:
                 continue
             entity_desc[entity_id] = desc
 
-            mentions = list(set(kb_data.get('alias', []) + [kb_data['subject']]))
+            mentions = list(set(kb_data.get('alias', []) + [kb_data['subject']])) # alias和subject都作为mention
             mentions = [mention.lower() for mention in mentions]
             entity_to_mention[entity_id] = mentions
 
             for mention in mentions:
                 if entity_id not in mention_to_entity[mention]:
-                    mention_to_entity[mention].append(entity_id)
+                    mention_to_entity[mention].append(entity_id) # 每一个mention对应若干entity_id
 
             for _type in kb_data['type']:
                 entity_type[entity_id].append(_type)
 
     return mention_to_entity, entity_to_mention, entity_desc, entity_type
 
-
+# 简单处理：转小写，去除NIL，改正offset错误标注，去除offset为-1
+# 最后train_data里面只有text和mention
 def load_train_data(erl_file):
     train_data = []
     with open(erl_file) as reader:
@@ -79,7 +80,7 @@ def load_train_data(erl_file):
             train_data.append({'text': erl_text, 'mention_data': mention_data})
     return train_data
 
-
+# test_data存储了：text_id，原始文本，转小写后的文本
 def load_test_data(erl_file):
     test_data = []
     with open(erl_file) as reader:
@@ -88,20 +89,22 @@ def load_test_data(erl_file):
             test_data.append({'text_id': data['text_id'], 'text': data['text'].lower(), 'raw_text': data['text']})
     return test_data
 
-
+# 根据实体描述信息和训练数据构建词典和语料
+# char2idx(我：3), idx2char（3：我）, corpus（每一条desc/训练文本都作为语料的一句，每一条由单字列表组成）
+# 注意：char2idx和idx2char都做了最低频次过滤，但corpus内部保留了所有原始信息
 def load_char_vocab_and_corpus(entity_desc, train_data, min_count=2):
     chars = dict()
     corpus = []
     for desc in tqdm(iter(entity_desc.values())):
         for c in desc:
-            chars[c] = chars.get(c, 0) + 1
-        corpus.append(list(desc))
+            chars[c] = chars.get(c, 0) + 1# 统计每个字符出现的次数，如"我：33"
+        corpus.append(list(desc))#每一个句话都作为语料的一个元素，每句话由单字列表组成
     for data in tqdm(iter(train_data)):
         for c in data['text']:
-            chars[c] = chars.get(c, 0) + 1
+            chars[c] = chars.get(c, 0) + 1#训练数据中的字也计入字出现频次
         corpus.append(list(data['text']))
-    chars = {i: j for i, j in chars.items() if j >= min_count}
-    idx2char = {i + 2: j for i, j in enumerate(chars)}  # 0: mask, 1: padding
+    chars = {i: j for i, j in chars.items() if j >= min_count}#至少出现2次才保留
+    idx2char = {i + 2: j for i, j in enumerate(chars)}  # 0: mask, 1: padding # 枚举的j为字典char的key，即字符
     char2idx = {j: i for i, j in idx2char.items()}
     return char2idx, idx2char, corpus
 
@@ -113,9 +116,9 @@ def load_bichar_vocab_and_corpus(entity_desc, train_data, min_count=2):
         bigrams = []
         for i in range(len(desc)):
             c = desc[i] + '</end>' if i == len(desc) - 1 else desc[i:i+2]
-            bigrams.append(c)
-            bichars[c] = bichars.get(c, 0) + 1
-        corpus.append(bigrams)
+            bigrams.append(c) # 一句话中的所有二元组合
+            bichars[c] = bichars.get(c, 0) + 1 #每一个二元组合的频次统计
+        corpus.append(bigrams) #每一个句话都作为语料的一个元素，每句话由二元组合的列表组成
     for data in tqdm(iter(train_data)):
         bigrams = []
         for i in range(len(data['text'])):
@@ -133,9 +136,9 @@ def load_word_vocab_and_corpus(entity_desc, train_data, min_count=2):
     words = dict()
     corpus = []
     for desc in tqdm(iter(entity_desc.values())):
-        desc_cut = jieba.lcut(desc)
+        desc_cut = jieba.lcut(desc) #jieba默认分词，返回list
         for w in desc_cut:
-            words[w] = words.get(w, 0) + 1
+            words[w] = words.get(w, 0) + 1 # 统计每个词词频
         corpus.append(desc_cut)
     for data in tqdm(iter(train_data)):
         text_cut = jieba.lcut(data['text'])
@@ -150,16 +153,16 @@ def load_word_vocab_and_corpus(entity_desc, train_data, min_count=2):
 
 def load_charpos_vocab_and_corpus(char2idx, entity_desc, train_data):
     """build position aware character vocabulary by assign 4 positional tags: <B> <M> <E> <S>"""
-    charpos2idx = {'<B>': 2, '<M>': 3, '<E>': 4, '<S>': 5}
+    charpos2idx = {'<B>': 2, '<M>': 3, '<E>': 4, '<S>': 5} # 同样预留2个索引给mask,unk
     for c in char2idx.keys():
         charpos2idx[c+'<B>'] = len(charpos2idx) + 2
         charpos2idx[c+'<M>'] = len(charpos2idx) + 2
-        charpos2idx[c+'<E>'] = len(charpos2idx) + 2
-        charpos2idx[c+'<S>'] = len(charpos2idx) + 2
+        charpos2idx[c+'<E>'] = len(charpos2idx) + 2# 带位置标签的单字，到索引的映射
+        charpos2idx[c+'<S>'] = len(charpos2idx) + 2 # 扩充后变为{'<B>':2,'<M>':3,'<E>':4,'<S>':5,'我<B>':6,'我<M>':7, '我<E>':8, '我<S>': 9,……}
     idx2charpos = dict((idx, c) for c, idx in charpos2idx.items())
 
     corpus = []
-    for desc in tqdm(iter(entity_desc.values())):
+    for desc in tqdm(iter(entity_desc.values())):# 实体描述信息，每行一个data里面的【属性 属性值】，换行符分隔
         desc_cut = jieba.lcut(desc)
         desc_pos = []
         for word in desc_cut:
@@ -173,7 +176,7 @@ def load_charpos_vocab_and_corpus(char2idx, entity_desc, train_data):
                         desc_pos.append(word[i]+'<E>')  # end
                     else:
                         desc_pos.append(word[i]+'<M>')  # middle
-        corpus.append(desc_pos)
+        corpus.append(desc_pos) # 带位置标签的语料
     for data in tqdm(iter(train_data)):
         text_cut = jieba.lcut(data['text'])
         text_pos = []
@@ -247,7 +250,7 @@ if __name__ == '__main__':
     np.save(format_filename(PROCESSED_DATA_DIR, EMBEDDING_MATRIX_TEMPLATE, type='bic_fasttext'), bic_fastext)
     np.save(format_filename(PROCESSED_DATA_DIR, EMBEDDING_MATRIX_TEMPLATE, type='bic_glove'), bic_glove)
 
-    for mention in mention_to_entity.keys():
+    for mention in mention_to_entity.keys(): # kb_data里面的alias和subject都作为mention，加入自定义词典
         jieba.add_word(mention, freq=1000000)
     # prepare word embedding
     word_vocab, idx2word, word_corpus = load_word_vocab_and_corpus(entity_desc, train_data)
@@ -272,14 +275,12 @@ if __name__ == '__main__':
     np.save(format_filename(PROCESSED_DATA_DIR, EMBEDDING_MATRIX_TEMPLATE, type='cpos_glove'), cpos_glove)
 
     # hold out split
-    train_data, dev_data = train_valid_split(train_data)
-    test_data = load_test_data(CCKS_TEST_FILENAME)
+    train_data, dev_data = train_valid_split(train_data) # 从train.json里面分出一部分做验证集
+    test_data = load_test_data(CCKS_TEST_FILENAME) # develop.json当测试集
     pickle_dump(format_filename(PROCESSED_DATA_DIR, TRAIN_DATA_FILENAME), train_data)
     pickle_dump(format_filename(PROCESSED_DATA_DIR, DEV_DATA_FILENAME), dev_data)
     pickle_dump(format_filename(PROCESSED_DATA_DIR, TEST_DATA_FILENAME), test_data)
 
     # load test data
-    test_data = load_test_data(CCKS_TEST_FILENAME)
-    pickle_dump(format_filename(PROCESSED_DATA_DIR, TEST_DATA_FILENAME), test_data)
-    test_final_data = load_test_data(CCKS_TEST_FINAL_FILENAME)
+    test_final_data = load_test_data(CCKS_TEST_FINAL_FILENAME) # B榜测试集eval.json最终测试
     pickle_dump(format_filename(PROCESSED_DATA_DIR, TEST_FINAL_DATA_FILENAME), test_final_data)
